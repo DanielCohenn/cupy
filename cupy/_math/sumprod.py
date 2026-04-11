@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from tkinter import NO
 import warnings
 
 import numpy
@@ -218,6 +219,48 @@ def nancumprod(a, axis=None, dtype=None, out=None):
     """
     a = _replace_nan(a, 1, out=out)
     return cumprod(a, axis=axis, dtype=dtype, out=out)
+
+
+def cumulative_prod(x, /, *, axis=None, dtype=None, out=None, include_initial=False):
+    """Returns the cumulative product of elements along a given axis.
+
+    Args:
+        a (cupy.ndarray): Input array.
+        axis (int): Axis along which the cumulative product is taken. If
+        ...
+    """
+    x = cupy.atleast_1d(x)
+    x_ndim = x.ndim
+
+    if axis is None:
+        if x_ndim >= 2:
+            raise ValueError("For arrays which have more than one dimension"
+            "``axis`` argument is required")
+        
+        axis = 0
+    
+    if out is not None and include_initial:
+        item = [slice(None)] * x_ndim
+        item[axis] = slice(1, None)
+
+        func.accumulate(x, axis=axis, dtype=dtype, out=out[tuple(item)])
+
+        item[axis] = 0
+        out[tuple(item)] = 0
+    
+        return out
+    
+    res = func.accumulate(x, axis=axis, dtype=dtype, out=out)
+
+    if include_initial:
+        initial_shape = list(x.shape)
+        initial_shape[axis] = 1
+        res = cupy.concat(
+            [cupy.full_like(res, 0, shape=initial_shape), res],
+            axis=axis
+        )
+    
+    return res
 
 
 _replace_nan_kernel = cupy._core._kernel.ElementwiseKernel(
