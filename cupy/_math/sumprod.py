@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from tkinter import NO
 import warnings
 
 import numpy
@@ -224,18 +223,38 @@ def nancumprod(a, axis=None, dtype=None, out=None):
 def cumulative_prod(x, /, *, axis=None, dtype=None, out=None, include_initial=False):
     """Returns the cumulative product of elements along a given axis.
 
+    This function is an Array API compatible alternative to
+    :func:`cupy.cumprod`.
+
     Args:
-        a (cupy.ndarray): Input array.
-        axis (int): Axis along which the cumulative product is taken. If
-        ...
+        x (cupy.ndarray): Input array.
+        axis (int): Axis along which the cumulative product is computed.
+            The default (``None``) is only allowed for one-dimensional arrays.
+            For arrays with more than one dimension ``axis`` is required.
+        dtype: Type of the returned array and of the accumulator in which the
+            elements are multiplied. If ``dtype`` is not specified, it
+            defaults to the dtype of ``x``.
+        out (cupy.ndarray): Alternative output array in which to place the
+            result. It must have the same shape and buffer length as the
+            expected output but the type will be cast if necessary.
+        include_initial (bool): Boolean indicating whether to include the
+            initial value (ones) as the first value in the output. With
+            ``include_initial=True`` the shape of the output is different
+            than the shape of the input. Default: ``False``.
+
+    Returns:
+        cupy.ndarray: The result array.
+
+    .. seealso:: :func:`numpy.cumulative_prod`
+
     """
     x = cupy.atleast_1d(x)
     x_ndim = x.ndim
 
     if axis is None:
         if x_ndim >= 2:
-            raise ValueError("For arrays which have more than one dimension"
-            "``axis`` argument is required")
+            raise ValueError("For arrays which have more than one dimension "
+                             "``axis`` argument is required.")
         
         axis = 0
     
@@ -243,20 +262,20 @@ def cumulative_prod(x, /, *, axis=None, dtype=None, out=None, include_initial=Fa
         item = [slice(None)] * x_ndim
         item[axis] = slice(1, None)
 
-        func.accumulate(x, axis=axis, dtype=dtype, out=out[tuple(item)])
+        cumprod(x, axis=axis, dtype=dtype, out=out[tuple(item)])
 
         item[axis] = 0
-        out[tuple(item)] = 0
+        out[tuple(item)] = 1
     
         return out
     
-    res = func.accumulate(x, axis=axis, dtype=dtype, out=out)
+    res = cumprod(x, axis=axis, dtype=dtype, out=out)
 
     if include_initial:
         initial_shape = list(x.shape)
         initial_shape[axis] = 1
         res = cupy.concat(
-            [cupy.full_like(res, 0, shape=initial_shape), res],
+            [cupy.full_like(res, 1, shape=initial_shape), res],
             axis=axis
         )
     
