@@ -220,7 +220,78 @@ def nancumprod(a, axis=None, dtype=None, out=None):
     return cumprod(a, axis=axis, dtype=dtype, out=out)
 
 
-def cumulative_prod(x, /, *, axis=None, dtype=None, out=None, include_initial=False):
+def _cumulative_op(x, op, identity, axis, dtype, out, include_initial):
+    """Shared implementation of :func:`cumulative_sum` and
+    :func:`cumulative_prod`.
+
+    Args:
+        x (cupy.ndarray): Input array.
+        op (callable): Underlying cumulative function to delegate to, either
+            :func:`cumsum` or :func:`cumprod`. Called as
+            ``op(x, axis=axis, dtype=dtype, out=...)``.
+        identity: Additive or multiplicative identity for ``op`` (``0`` for
+            sum, ``1`` for product) used to fill the leading slot along
+            ``axis`` when ``include_initial`` is ``True``.
+        axis (int or None): Axis along which the cumulative operation is
+            computed. ``None`` is only allowed for one-dimensional arrays and
+            defaults to ``0``; for higher-dimensional arrays ``axis`` is
+            required.
+        dtype: Type of the returned array and of the accumulator in which the
+            elements are combined. If ``None``, defaults to the dtype of
+            ``x``.
+        out (cupy.ndarray or None): Alternative output array. Its shape must
+            match the expected output shape (i.e. ``x.shape`` with
+            ``shape[axis] + 1`` when ``include_initial`` is ``True``).
+        include_initial (bool): If ``True``, prepend ``identity`` as the first
+            value along ``axis``, expanding the output length along that axis
+            by one.
+
+    Returns:
+        cupy.ndarray: The cumulative result. When ``out`` is provided, the
+        same array is returned.
+    """
+    x = cupy.atleast_1d(x)
+    x_ndim = x.ndim
+
+    if axis is None:
+        if x_ndim >= 2:
+            raise ValueError("For arrays which have more than one dimension "
+                             "``axis`` argument is required.")
+        axis = 0
+    else:
+        axis = internal._normalize_axis_index(axis, x_ndim)
+
+    expected_shape = list(x.shape)
+    if include_initial:
+        expected_shape[axis] += 1
+    expected_shape = tuple(expected_shape)
+
+    if out is not None and out.shape != expected_shape:
+        raise ValueError(
+            f"out.shape {out.shape} does not match expected shape "
+            f"{expected_shape}"
+        )
+
+    if not include_initial:
+        return op(x, axis=axis, dtype=dtype, out=out)
+
+    if out is None:
+        res_dtype = dtype if dtype is not None else x.dtype
+        res = cupy.empty(expected_shape, dtype=res_dtype)
+    else:
+        res = out
+
+    item = [slice(None)] * x_ndim
+    item[axis] = 0
+    res[tuple(item)] = identity
+    item[axis] = slice(1, None)
+    op(x, axis=axis, dtype=dtype, out=res[tuple(item)])
+
+    return res
+
+
+def cumulative_prod(x, /, *, axis=None, dtype=None, out=None,
+                    include_initial=False):
     """Returns the cumulative product of elements along a given axis.
 
     This function is an Array API compatible alternative to
@@ -235,8 +306,8 @@ def cumulative_prod(x, /, *, axis=None, dtype=None, out=None, include_initial=Fa
             elements are multiplied. If ``dtype`` is not specified, it
             defaults to the dtype of ``x``.
         out (cupy.ndarray): Alternative output array in which to place the
-            result. It must have the same shape and buffer length as the
-            expected output but the type will be cast if necessary.
+            result. It must have the same shape as the expected output but
+            the type will be cast if necessary.
         include_initial (bool): Boolean indicating whether to include the
             initial value (ones) as the first value in the output. With
             ``include_initial=True`` the shape of the output is different
@@ -248,38 +319,39 @@ def cumulative_prod(x, /, *, axis=None, dtype=None, out=None, include_initial=Fa
     .. seealso:: :func:`numpy.cumulative_prod`
 
     """
-    x = cupy.atleast_1d(x)
-    x_ndim = x.ndim
+    return _cumulative_op(x, cumprod, 1, axis, dtype, out, include_initial)
 
-    if axis is None:
-        if x_ndim >= 2:
-            raise ValueError("For arrays which have more than one dimension "
-                             "``axis`` argument is required.")
-        
-        axis = 0
-    
-    if out is not None and include_initial:
-        item = [slice(None)] * x_ndim
-        item[axis] = slice(1, None)
 
-        cumprod(x, axis=axis, dtype=dtype, out=out[tuple(item)])
+def cumulative_sum(x, /, *, axis=None, dtype=None, out=None,
+                   include_initial=False):
+    """Returns the cumulative sum of elements along a given axis.
 
-        item[axis] = 0
-        out[tuple(item)] = 1
-    
-        return out
-    
-    res = cumprod(x, axis=axis, dtype=dtype, out=out)
+    This function is an Array API compatible alternative to
+    :func:`cupy.cumsum`.
 
-    if include_initial:
-        initial_shape = list(x.shape)
-        initial_shape[axis] = 1
-        res = cupy.concat(
-            [cupy.full_like(res, 1, shape=initial_shape), res],
-            axis=axis
-        )
-    
-    return res
+    Args:
+        x (cupy.ndarray): Input array.
+        axis (int): Axis along which the cumulative sum is computed.
+            The default (``None``) is only allowed for one-dimensional arrays.
+            For arrays with more than one dimension ``axis`` is required.
+        dtype: Type of the returned array and of the accumulator in which the
+            elements are summed. If ``dtype`` is not specified, it defaults to
+            the dtype of ``x``.
+        out (cupy.ndarray): Alternative output array in which to place the
+            result. It must have the same shape as the expected output but
+            the type will be cast if necessary.
+        include_initial (bool): Boolean indicating whether to include the
+            initial value (zeros) as the first value in the output. With
+            ``include_initial=True`` the shape of the output is different
+            than the shape of the input. Default: ``False``.
+
+    Returns:
+        cupy.ndarray: The result array.
+
+    .. seealso:: :func:`numpy.cumulative_sum`
+
+    """
+    return _cumulative_op(x, cumsum, 0, axis, dtype, out, include_initial)
 
 
 _replace_nan_kernel = cupy._core._kernel.ElementwiseKernel(
