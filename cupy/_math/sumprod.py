@@ -221,7 +221,7 @@ def nancumprod(a, axis=None, dtype=None, out=None):
 
 
 def _cumulative_op(x, op, identity, axis, dtype, out, include_initial):
-    """Shared implementation of :func:`cumulative_sum` and
+    """Private shared implementation of :func:`cumulative_sum` and
     :func:`cumulative_prod`.
 
     Args:
@@ -275,17 +275,22 @@ def _cumulative_op(x, op, identity, axis, dtype, out, include_initial):
     if not include_initial:
         return op(x, axis=axis, dtype=dtype, out=out)
 
-    if out is None:
-        res_dtype = dtype if dtype is not None else x.dtype
-        res = cupy.empty(expected_shape, dtype=res_dtype)
-    else:
-        res = out
-
     item = [slice(None)] * x_ndim
+
+    if out is not None:
+        res = out
+        item[axis] = 0
+        res[tuple(item)] = identity
+        item[axis] = slice(1, None)
+        op(x, axis=axis, dtype=dtype, out=res[tuple(item)])
+        return res
+
+    inner = op(x, axis=axis, dtype=dtype)
+    res = cupy.empty(expected_shape, dtype=inner.dtype)
     item[axis] = 0
     res[tuple(item)] = identity
     item[axis] = slice(1, None)
-    op(x, axis=axis, dtype=dtype, out=res[tuple(item)])
+    res[tuple(item)] = inner
 
     return res
 
