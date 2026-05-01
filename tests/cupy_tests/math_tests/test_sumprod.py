@@ -1248,7 +1248,7 @@ class TestTrapezoid:
         return xp.trapezoid(a, x=x, dx=0.1)
 
 
-@testing.with_requires('numpy>=2.0')
+@testing.with_requires('numpy>=2.1')
 @pytest.mark.parametrize('func', ['cumulative_sum', 'cumulative_prod'])
 class TestCumulativeSumProd:
 

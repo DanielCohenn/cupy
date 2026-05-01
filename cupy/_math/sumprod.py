@@ -250,6 +250,9 @@ def _cumulative_op(x, op, identity, axis, dtype, out, include_initial):
         cupy.ndarray: The cumulative result. When ``out`` is provided, the
         same array is returned.
     """
+    if not isinstance(x, cupy.ndarray):
+        raise TypeError('`x` should be of type cupy.ndarray')
+
     x = cupy.atleast_1d(x)
     x_ndim = x.ndim
 
@@ -324,7 +327,10 @@ def cumulative_prod(x, /, *, axis=None, dtype=None, out=None,
     .. seealso:: :func:`numpy.cumulative_prod`
 
     """
-    return _cumulative_op(x, cumprod, 1, axis, dtype, out, include_initial)
+    result = _cumulative_op(x, cumprod, 1, axis, dtype, out, include_initial)
+
+    return out if out is not None else result
+
 
 
 def cumulative_sum(x, /, *, axis=None, dtype=None, out=None,
@@ -356,7 +362,9 @@ def cumulative_sum(x, /, *, axis=None, dtype=None, out=None,
     .. seealso:: :func:`numpy.cumulative_sum`
 
     """
-    return _cumulative_op(x, cumsum, 0, axis, dtype, out, include_initial)
+    result = _cumulative_op(x, cumsum, 0, axis, dtype, out, include_initial)
+
+    return out if out is not None else result
 
 
 _replace_nan_kernel = cupy._core._kernel.ElementwiseKernel(
