@@ -278,22 +278,28 @@ def _cumulative_op(x, op, identity, axis, dtype, out, include_initial):
     if not include_initial:
         return op(x, axis=axis, dtype=dtype, out=out)
 
-    item = [slice(None)] * x_ndim
-
-    if out is not None:
+    if out is None:
+        # Resolve dtype upfront (mirrors scan_core promotion) so we can
+        # allocate once and write the scan directly into res[1:].
+        if dtype is None:
+            kind = x.dtype.kind
+            if kind in 'bi':
+                out_dtype = numpy.dtype('int64')
+            elif kind == 'u':
+                out_dtype = numpy.dtype('uint64')
+            else:
+                out_dtype = x.dtype
+        else:
+            out_dtype = numpy.dtype(dtype)
+        res = cupy.empty(expected_shape, dtype=out_dtype)
+    else:
         res = out
-        item[axis] = 0
-        res[tuple(item)] = identity
-        item[axis] = slice(1, None)
-        op(x, axis=axis, dtype=dtype, out=res[tuple(item)])
-        return res
 
-    inner = op(x, axis=axis, dtype=dtype)
-    res = cupy.empty(expected_shape, dtype=inner.dtype)
+    item = [slice(None)] * x_ndim
     item[axis] = 0
     res[tuple(item)] = identity
     item[axis] = slice(1, None)
-    res[tuple(item)] = inner
+    op(x, axis=axis, dtype=dtype, out=res[tuple(item)])
 
     return res
 
@@ -330,7 +336,6 @@ def cumulative_prod(x, /, *, axis=None, dtype=None, out=None,
     result = _cumulative_op(x, cumprod, 1, axis, dtype, out, include_initial)
 
     return out if out is not None else result
-
 
 
 def cumulative_sum(x, /, *, axis=None, dtype=None, out=None,
